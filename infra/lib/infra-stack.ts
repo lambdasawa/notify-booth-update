@@ -22,7 +22,9 @@ export class InfraStack extends cdk.Stack {
 
     keyAlias.grantEncryptDecrypt(account);
 
-    const bucket = new s3.Bucket(this, "Bucket");
+    const bucket = new s3.Bucket(this, "Bucket", {
+      removalPolicy: cdk.RemovalPolicy.DESTROY
+    });
 
     const func = new lambda.Function(this, "Function", {
       code: lambda.Code.fromAsset("./lambda"),
