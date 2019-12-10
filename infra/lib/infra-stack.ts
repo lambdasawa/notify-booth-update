@@ -5,6 +5,7 @@ import s3 = require("@aws-cdk/aws-s3");
 import lambda = require("@aws-cdk/aws-lambda");
 import events = require("@aws-cdk/aws-events");
 import eventsTargets = require("@aws-cdk/aws-events-targets");
+import logs = require("@aws-cdk/aws-logs");
 
 export class InfraStack extends cdk.Stack {
   private schedule = "3 minutes";
@@ -21,7 +22,9 @@ export class InfraStack extends cdk.Stack {
 
     keyAlias.grantEncryptDecrypt(account);
 
-    const bucket = new s3.Bucket(this, "Bucket");
+    const bucket = new s3.Bucket(this, "Bucket", {
+      removalPolicy: cdk.RemovalPolicy.DESTROY
+    });
 
     const func = new lambda.Function(this, "Function", {
       code: lambda.Code.fromAsset("./lambda"),
@@ -33,7 +36,8 @@ export class InfraStack extends cdk.Stack {
         BOOTH_URL: process.env["BOOTH_URL"] || "",
         ENCRYPTED_SLACK_URL: "",
         ENCRYPTED_SLACK_CHANNEL: ""
-      }
+      },
+      logRetention: logs.RetentionDays.ONE_WEEK
     });
 
     keyAlias.grantEncryptDecrypt(func);
@@ -47,5 +51,12 @@ export class InfraStack extends cdk.Stack {
     const lambdaEventTarget = new eventsTargets.LambdaFunction(func);
 
     rule.addTarget(lambdaEventTarget);
+
+    new cdk.CfnOutput(this, "FunctionName", {
+      value: func.functionName
+    });
+    new cdk.CfnOutput(this, "KeyId", {
+      value: keyAlias.keyId
+    });
   }
 }
