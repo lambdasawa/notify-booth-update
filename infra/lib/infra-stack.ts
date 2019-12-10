@@ -5,7 +5,7 @@ import s3 = require("@aws-cdk/aws-s3");
 import lambda = require("@aws-cdk/aws-lambda");
 import events = require("@aws-cdk/aws-events");
 import eventsTargets = require("@aws-cdk/aws-events-targets");
-import { countResources } from "@aws-cdk/assert";
+import logs = require("@aws-cdk/aws-logs");
 
 export class InfraStack extends cdk.Stack {
   private schedule = "3 minutes";
@@ -36,7 +36,8 @@ export class InfraStack extends cdk.Stack {
         BOOTH_URL: process.env["BOOTH_URL"] || "",
         ENCRYPTED_SLACK_URL: "",
         ENCRYPTED_SLACK_CHANNEL: ""
-      }
+      },
+      logRetention: logs.RetentionDays.ONE_WEEK
     });
 
     keyAlias.grantEncryptDecrypt(func);
