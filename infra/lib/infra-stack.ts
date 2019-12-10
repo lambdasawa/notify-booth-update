@@ -5,6 +5,7 @@ import s3 = require("@aws-cdk/aws-s3");
 import lambda = require("@aws-cdk/aws-lambda");
 import events = require("@aws-cdk/aws-events");
 import eventsTargets = require("@aws-cdk/aws-events-targets");
+import { countResources } from "@aws-cdk/assert";
 
 export class InfraStack extends cdk.Stack {
   private schedule = "3 minutes";
@@ -47,5 +48,12 @@ export class InfraStack extends cdk.Stack {
     const lambdaEventTarget = new eventsTargets.LambdaFunction(func);
 
     rule.addTarget(lambdaEventTarget);
+
+    new cdk.CfnOutput(this, "FunctionName", {
+      value: func.functionName
+    });
+    new cdk.CfnOutput(this, "KeyId", {
+      value: keyAlias.keyId
+    });
   }
 }
