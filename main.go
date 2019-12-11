@@ -109,6 +109,7 @@ func getUrls(url string) []string {
 		})
 
 		collector.OnRequest(func(r *colly.Request) {
+			r.Headers.Add("Cache-Control", "no-cache, no-store")
 		})
 
 		if err := collector.Visit(url); err != nil {
