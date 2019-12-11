@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -58,9 +57,9 @@ func run() error {
 		"current": currentUrls,
 	}).Info("urls")
 
-	isUpdated := isBoothUpdated(previousUrls, currentUrls)
-	if isUpdated {
-		if err := postSlack(kmsService); err != nil {
+	subs, adds := getDiff(previousUrls, currentUrls)
+	if len(subs) > 0 || len(adds) > 0 {
+		if err := postSlack(kmsService, subs, adds); err != nil {
 			return fmt.Errorf("post slack: %v", err)
 		}
 
@@ -68,7 +67,10 @@ func run() error {
 			return fmt.Errorf("put current urls: %v", err)
 		}
 	}
-	log.WithField("isUpdated", isUpdated).Info("isUpdated")
+	log.WithFields(log.Fields{
+		"removedUrls": subs,
+		"addedUrls":   adds,
+	}).Info("result")
 
 	return nil
 }
@@ -94,7 +96,7 @@ func getObject(svc *s3.S3) ([]string, error) {
 	return urls, nil
 }
 
-func getUrls(url string) []string {
+func getUrls(baseUrl string) []string {
 	urlsChan := make(chan string)
 	go func() {
 		collector := colly.NewCollector()
@@ -120,8 +122,8 @@ func getUrls(url string) []string {
 			}).Info("onResponse")
 		})
 
-		if err := collector.Visit(url); err != nil {
-			log.WithField("visit", url).Fatal(err)
+		if err := collector.Visit(baseUrl); err != nil {
+			log.WithField("visit", baseUrl).Fatal(err)
 		}
 
 		close(urlsChan)
@@ -129,7 +131,7 @@ func getUrls(url string) []string {
 
 	urls := make([]string, 0)
 	for u := range urlsChan {
-		urls = append(urls, u)
+		urls = append(urls, baseUrl+u)
 	}
 
 	sort.Strings(urls)
@@ -137,18 +139,45 @@ func getUrls(url string) []string {
 	return urls
 }
 
-func isBoothUpdated(previous, current []string) bool {
-	return !reflect.DeepEqual(previous, current)
+func getDiff(previous, current []string) (sub, add []string) {
+	f := func(as, bs []string) (result []string) {
+		for _, a := range as {
+			exists := false
+			for _, b := range bs {
+				if a == b {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				result = append(result, a)
+			}
+		}
+		return result
+	}
+
+	return f(previous, current), f(current, previous)
 }
 
-func postSlack(svc *kms.KMS) error {
+func postSlack(svc *kms.KMS, subs, adds []string) error {
 	channel, err := getKMSData(svc, encryptedSlackChannel)
 	if err != nil {
 		return fmt.Errorf("get KMS data: %v", err)
 	}
 
+	sb := new(strings.Builder)
+	fmt.Fprintln(sb, "Booth updated!!!")
+	fmt.Fprintln(sb, "# removed")
+	for _, removed := range subs {
+		fmt.Fprintf(sb, "- %s\n", removed)
+	}
+	fmt.Fprintln(sb, "# added")
+	for _, added := range adds {
+		fmt.Fprintf(sb, "- %s\n", added)
+	}
+
 	req := map[string]interface{}{
-		"text":        fmt.Sprintf("!!! %s UPDATED !!!", boothUrl),
+		"text":        sb.String(),
 		"channelName": channel,
 	}
 	reqBytes, err := json.Marshal(req)
