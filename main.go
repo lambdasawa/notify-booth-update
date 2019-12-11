@@ -129,9 +129,14 @@ func getUrls(baseUrl string) []string {
 		close(urlsChan)
 	}()
 
-	urls := make([]string, 0)
+	uniqUrls := map[string]interface{}{}
 	for u := range urlsChan {
-		urls = append(urls, baseUrl+u)
+		uniqUrls[baseUrl+u] = struct{}{}
+	}
+
+	urls := make([]string, 0)
+	for u := range uniqUrls {
+		urls = append(urls, u)
 	}
 
 	sort.Strings(urls)
