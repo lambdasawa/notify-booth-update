@@ -112,6 +112,14 @@ func getUrls(url string) []string {
 			r.Headers.Add("Cache-Control", "no-cache, no-store")
 		})
 
+		collector.OnResponse(func(w *colly.Response) {
+			log.WithFields(log.Fields{
+				"requestHeaders":  w.Request.Headers,
+				"responseHeaders": w.Headers,
+				"status":          w.StatusCode,
+			}).Info("onResponse")
+		})
+
 		if err := collector.Visit(url); err != nil {
 			log.WithField("visit", url).Fatal(err)
 		}
