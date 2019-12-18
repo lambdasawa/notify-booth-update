@@ -46,19 +46,14 @@ export class InfraStack extends cdk.Stack {
     const logGroup = new logs.LogGroup(this, "LogGroup", {
       logGroupName: `/aws/lambda/${func.functionName}`
     });
-    this.addLogGroupAlarm(logGroup, "notify-booth-update", "error-log");
 
     keyAlias.grantEncryptDecrypt(func);
 
     bucket.grantReadWrite(func);
 
-    const rule = new events.Rule(this, "Rule", {
-      schedule: events.Schedule.expression(`rate(${this.schedule})`)
-    });
+    this.addSchedule(func, `rate(${this.schedule})`);
 
-    const lambdaEventTarget = new eventsTargets.LambdaFunction(func);
-
-    rule.addTarget(lambdaEventTarget);
+    this.addLogGroupAlarm(logGroup, "notify-booth-update", "error-log");
 
     new cdk.CfnOutput(this, "FunctionName", {
       value: func.functionName
@@ -66,6 +61,14 @@ export class InfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, "KeyId", {
       value: keyAlias.keyId
     });
+  }
+
+  private addSchedule(func: lambda.Function, expression: string) {
+    const rule = new events.Rule(this, "Rule", {
+      schedule: events.Schedule.expression(expression)
+    });
+
+    rule.addTarget(new eventsTargets.LambdaFunction(func));
   }
 
   private addLogGroupAlarm(
