@@ -8,7 +8,8 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "post-deploy": "node ./bin/post_deploy.js"
   },
   "devDependencies": {
     "@aws-cdk/assert": "1.18.0",
@@ -31,6 +32,7 @@
     "@aws-cdk/aws-s3": "1.18.0",
     "@aws-cdk/aws-sns": "1.18.0",
     "@aws-cdk/core": "1.18.0",
+    "aws-sdk": "^2.593.0",
     "source-map-support": "^0.5.16"
   }
 }
