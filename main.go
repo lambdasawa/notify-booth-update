@@ -51,31 +51,31 @@ func run() (err error) {
 	kmsService := kms.New(sess, region)
 	s3Service := s3.New(sess, region)
 
-	previousUrls, err := getObject(s3Service)
+	knownUrls, err := getObject(s3Service)
 	if err != nil {
-		return fmt.Errorf("get previous urls: %v", err)
+		return fmt.Errorf("get known urls: %v", err)
 	}
 
 	currentUrls := getUrls(boothUrl)
 
 	log.WithFields(log.Fields{
-		"prev":    previousUrls,
+		"known":   knownUrls,
 		"current": currentUrls,
 	}).Info("urls")
 
-	subs, adds := getDiff(previousUrls, currentUrls)
-	if len(subs) > 0 || len(adds) > 0 {
-		if err := postSlack(kmsService, subs, adds); err != nil {
+	newUrls := getNewUrls(knownUrls, currentUrls)
+	if len(newUrls) > 0 {
+		if err := postSlack(kmsService, newUrls); err != nil {
 			return fmt.Errorf("post slack: %v", err)
 		}
 
-		if err := putObject(s3Service, currentUrls); err != nil {
+		if err := putObject(s3Service, append(knownUrls, currentUrls...)); err != nil {
 			return fmt.Errorf("put current urls: %v", err)
 		}
 	}
 	log.WithFields(log.Fields{
-		"removedUrls": subs,
-		"addedUrls":   adds,
+		"knownUrls": knownUrls,
+		"newUrls":   newUrls,
 	}).Info("result")
 
 	return nil
@@ -150,41 +150,37 @@ func getUrls(baseUrl string) []string {
 	return urls
 }
 
-func getDiff(previous, current []string) (sub, add []string) {
-	f := func(as, bs []string) (result []string) {
-		for _, a := range as {
-			exists := false
-			for _, b := range bs {
-				if a == b {
-					exists = true
-					break
-				}
-			}
-			if !exists {
-				result = append(result, a)
+func getNewUrls(known, current []string) []string {
+	newUrls := make([]string, 0)
+	for _, c := range current {
+		isKnown := false
+		for _, n := range known {
+			if n == c {
+				isKnown = true
+				break
 			}
 		}
-		return result
+		if isKnown {
+			continue
+		}
+
+		newUrls = append(newUrls, c)
 	}
 
-	return f(previous, current), f(current, previous)
+	return newUrls
 }
 
-func postSlack(svc *kms.KMS, subs, adds []string) error {
+func postSlack(svc *kms.KMS, newUrls []string) error {
 	channel, err := getKMSData(svc, encryptedSlackChannel)
 	if err != nil {
 		return fmt.Errorf("get KMS data: %v", err)
 	}
 
 	sb := new(strings.Builder)
-	fmt.Fprintln(sb, "Booth updated!!!")
-	fmt.Fprintln(sb, "# removed")
-	for _, removed := range subs {
-		fmt.Fprintf(sb, "- %s\n", removed)
-	}
-	fmt.Fprintln(sb, "# added")
-	for _, added := range adds {
-		fmt.Fprintf(sb, "- %s\n", added)
+	fmt.Fprintln(sb, "# Booth updated!!!")
+	fmt.Fprintln(sb, "## new urls")
+	for _, u := range newUrls {
+		fmt.Fprintf(sb, "- %s\n", u)
 	}
 
 	req := map[string]interface{}{
