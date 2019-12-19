@@ -63,7 +63,7 @@ export class InfraStack extends cdk.Stack {
     });
   }
 
-  private addSchedule(func: lambda.Function, expression: string) {
+  private addSchedule(func: lambda.Function, expression: string): void {
     const rule = new events.Rule(this, "Rule", {
       schedule: events.Schedule.expression(expression)
     });
@@ -75,7 +75,7 @@ export class InfraStack extends cdk.Stack {
     logGroup: logs.LogGroup,
     metricNamespace: string,
     metricName: string
-  ) {
+  ): void {
     logGroup.addMetricFilter("MetricFilter", {
       metricNamespace: metricNamespace,
       metricName: metricName,
@@ -84,7 +84,7 @@ export class InfraStack extends cdk.Stack {
 
     const topic = new Topic(this, "Topic", {});
 
-    const subscription = new Subscription(this, "Subscription", {
+    new Subscription(this, "Subscription", {
       protocol: SubscriptionProtocol.EMAIL,
       endpoint: process.env["ALERT_EMAIL"] || "",
       topic: topic

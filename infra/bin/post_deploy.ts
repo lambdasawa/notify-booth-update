@@ -3,8 +3,33 @@
 import "source-map-support/register";
 import aws = require("aws-sdk");
 
+const findCfnOutputValue = async (cloudFormation: aws.CloudFormation, key: string): Promise<string> => {
+  const stacksRes = await cloudFormation.describeStacks({
+    StackName: "NotifyBoothUpdateInfraStack"
+  }).promise();
+  const stacks = stacksRes.Stacks || [];
+  const outputs = stacks[0].Outputs || [];
+  const output = outputs.find(o => o.OutputKey === key);
+  return output?.OutputValue || "";
+};
+
+const encryptKMS = async (kms: aws.KMS, keyId: string, plaintext: string): Promise<string> => {
+  const encryptRes = await kms.encrypt({
+    KeyId: keyId,
+    Plaintext: plaintext
+  }).promise();
+  const cipherTextBlob = encryptRes.CiphertextBlob;
+  if (cipherTextBlob instanceof Buffer) {
+    return cipherTextBlob.toString("base64");
+  }
+  if (cipherTextBlob instanceof String) {
+    return cipherTextBlob.toString();
+  }
+  throw new Error("unknown cipher text type");
+};
+
 // add encrypted environment variables into lambda
-const main = async () => {
+const main = async (): Promise<void> => {
   aws.config.getCredentials((err: aws.AWSError) => {
     if (err) throw new Error(err.stack);
   });
@@ -35,29 +60,5 @@ const main = async () => {
   }).promise()
 };
 
-const findCfnOutputValue = async (cloudFormation: aws.CloudFormation, key: string): Promise<string> => {
-  const stacksRes = await cloudFormation.describeStacks({
-    StackName: "NotifyBoothUpdateInfraStack"
-  }).promise();
-  const stacks = stacksRes.Stacks || [];
-  const outputs = stacks[0].Outputs || [];
-  const output = outputs.find(o => o.OutputKey === key);
-  return output?.OutputValue || "";
-};
-
-const encryptKMS = async (kms: aws.KMS, keyId: string, plaintext: string): Promise<string> => {
-  const encryptRes = await kms.encrypt({
-    KeyId: keyId,
-    Plaintext: plaintext
-  }).promise();
-  const cipherTextBlob = encryptRes.CiphertextBlob;
-  if (cipherTextBlob instanceof Buffer) {
-    return cipherTextBlob.toString("base64");
-  }
-  if (cipherTextBlob instanceof String) {
-    return cipherTextBlob.toString();
-  }
-  throw new Error("unknown cipher text type");
-};
 
 main();
