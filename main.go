@@ -178,7 +178,9 @@ func postSlack(svc *kms.KMS, newUrls []string) error {
 
 	sb := new(strings.Builder)
 	fmt.Fprintln(sb, "# Booth updated!!!")
-	fmt.Fprintln(sb, "## new urls")
+	fmt.Fprintln(sb, "## Store URL")
+	fmt.Fprintln(sb, boothUrl)
+	fmt.Fprintln(sb, "## New item URLs")
 	for _, u := range newUrls {
 		fmt.Fprintf(sb, "- %s\n", u)
 	}
