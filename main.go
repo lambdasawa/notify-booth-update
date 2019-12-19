@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -22,58 +21,89 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var (
-	bucket                = os.Getenv("S3_BUCKET")
-	key                   = os.Getenv("S3_KEY")
-	boothUrl              = os.Getenv("BOOTH_URL")
-	encryptedSlackUrl     = os.Getenv("ENCRYPTED_SLACK_URL")
-	encryptedSlackChannel = os.Getenv("ENCRYPTED_SLACK_CHANNEL")
+type (
+	envVars struct {
+		bucket                string
+		key                   string
+		boothURL              string
+		encryptedSlackURL     string
+		encryptedSlackChannel string
+	}
 )
 
-func init() {
+func main() {
 	log.SetFormatter(&log.JSONFormatter{})
 	log.SetReportCaller(true)
-}
 
-func main() {
 	lambda.Start(run)
 }
 
-func run() error {
-	sess := session.New()
+func run() (err error) {
+	defer func() {
+		if err != nil {
+			log.Error(err)
+		}
+	}()
+
+	sess, err := session.NewSession()
+	if err != nil {
+		return fmt.Errorf("create new AWS session: %v", err)
+	}
 	region := aws.NewConfig().WithRegion("ap-northeast-1")
 
 	kmsService := kms.New(sess, region)
 	s3Service := s3.New(sess, region)
 
-	previousUrls, err := getObject(s3Service)
+	envVars := getEnvVars()
+
+	knownUrls, err := getObject(s3Service, envVars.bucket, envVars.key)
 	if err != nil {
-		return fmt.Errorf("get previous urls: %v", err)
+		return fmt.Errorf("get known urls: %v", err)
 	}
 
-	currentUrls := getUrls(boothUrl)
+	currentUrls := getURLs(envVars.boothURL)
 
 	log.WithFields(log.Fields{
-		"prev":    previousUrls,
+		"known":   knownUrls,
 		"current": currentUrls,
 	}).Info("urls")
 
-	isUpdated := isBoothUpdated(previousUrls, currentUrls)
-	if isUpdated {
-		if err := postSlack(kmsService); err != nil {
+	newURLs := getNewUrls(knownUrls, currentUrls)
+	if len(newURLs) > 0 {
+		if err := postSlack(
+			kmsService,
+			envVars.encryptedSlackURL,
+			envVars.encryptedSlackChannel,
+			envVars.boothURL,
+			newURLs,
+		); err != nil {
 			return fmt.Errorf("post slack: %v", err)
 		}
 
-		if err := putObject(s3Service, currentUrls); err != nil {
+		newKnownUrls := append(knownUrls, currentUrls...)
+		if err := putObject(s3Service, envVars.bucket, envVars.key, newKnownUrls); err != nil {
 			return fmt.Errorf("put current urls: %v", err)
 		}
 	}
-	log.WithField("isUpdated", isUpdated).Info("isUpdated")
+	log.WithFields(log.Fields{
+		"knownUrls": knownUrls,
+		"newUrls":   newURLs,
+	}).Info("result")
 
 	return nil
 }
 
-func getObject(svc *s3.S3) ([]string, error) {
+func getEnvVars() envVars {
+	return envVars{
+		bucket:                os.Getenv("S3_BUCKET"),
+		key:                   os.Getenv("S3_KEY"),
+		boothURL:              os.Getenv("BOOTH_URL"),
+		encryptedSlackURL:     os.Getenv("ENCRYPTED_SLACK_URL"),
+		encryptedSlackChannel: os.Getenv("ENCRYPTED_SLACK_CHANNEL"),
+	}
+}
+
+func getObject(svc *s3.S3, bucket, key string) ([]string, error) {
 	out, err := svc.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
@@ -94,7 +124,7 @@ func getObject(svc *s3.S3) ([]string, error) {
 	return urls, nil
 }
 
-func getUrls(url string) []string {
+func getURLs(baseURL string) []string {
 	urlsChan := make(chan string)
 	go func() {
 		collector := colly.NewCollector()
@@ -109,17 +139,31 @@ func getUrls(url string) []string {
 		})
 
 		collector.OnRequest(func(r *colly.Request) {
+			r.Headers.Add("Cache-Control", "no-cache, no-store")
 		})
 
-		if err := collector.Visit(url); err != nil {
-			log.WithField("visit", url).Fatal(err)
+		collector.OnResponse(func(w *colly.Response) {
+			log.WithFields(log.Fields{
+				"requestHeaders":  w.Request.Headers,
+				"responseHeaders": w.Headers,
+				"status":          w.StatusCode,
+			}).Info("onResponse")
+		})
+
+		if err := collector.Visit(baseURL); err != nil {
+			log.WithField("visit", baseURL).Fatal(err)
 		}
 
 		close(urlsChan)
 	}()
 
-	urls := make([]string, 0)
+	uniqUrls := map[string]interface{}{}
 	for u := range urlsChan {
+		uniqUrls[baseURL+u] = struct{}{}
+	}
+
+	urls := make([]string, 0)
+	for u := range uniqUrls {
 		urls = append(urls, u)
 	}
 
@@ -128,18 +172,43 @@ func getUrls(url string) []string {
 	return urls
 }
 
-func isBoothUpdated(previous, current []string) bool {
-	return !reflect.DeepEqual(previous, current)
+func getNewUrls(known, current []string) []string {
+	newUrls := make([]string, 0)
+	for _, c := range current {
+		isKnown := false
+		for _, n := range known {
+			if n == c {
+				isKnown = true
+				break
+			}
+		}
+		if isKnown {
+			continue
+		}
+
+		newUrls = append(newUrls, c)
+	}
+
+	return newUrls
 }
 
-func postSlack(svc *kms.KMS) error {
+func postSlack(svc *kms.KMS, encryptedSlackURL, encryptedSlackChannel string, boothURL string, newURLs []string) error {
 	channel, err := getKMSData(svc, encryptedSlackChannel)
 	if err != nil {
 		return fmt.Errorf("get KMS data: %v", err)
 	}
 
+	sb := new(strings.Builder)
+	fmt.Fprintln(sb, "# Booth updated!!!")
+	fmt.Fprintln(sb, "## Store URL")
+	fmt.Fprintln(sb, boothURL)
+	fmt.Fprintln(sb, "## New item URLs")
+	for _, u := range newURLs {
+		fmt.Fprintf(sb, "- %s\n", u)
+	}
+
 	req := map[string]interface{}{
-		"text":        fmt.Sprintf("!!! %s UPDATED !!!", boothUrl),
+		"text":        sb.String(),
 		"channelName": channel,
 	}
 	reqBytes, err := json.Marshal(req)
@@ -147,12 +216,12 @@ func postSlack(svc *kms.KMS) error {
 		return fmt.Errorf("encode request: %v", err)
 	}
 
-	url, err := getKMSData(svc, encryptedSlackUrl)
+	url, err := getKMSData(svc, encryptedSlackURL)
 	if err != nil {
 		return fmt.Errorf("get KMS data: %v", err)
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(reqBytes))
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(reqBytes)) // #nosec
 	if err != nil {
 		return fmt.Errorf("post: %v", err)
 	}
@@ -160,6 +229,7 @@ func postSlack(svc *kms.KMS) error {
 	if _, err := ioutil.ReadAll(resp.Body); err != nil {
 		return fmt.Errorf("read response body: %v", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("check response: %v", resp.Status)
@@ -185,7 +255,7 @@ func getKMSData(svc *kms.KMS, name string) (string, error) {
 	return string(out.Plaintext), nil
 }
 
-func putObject(svc *s3.S3, urls []string) error {
+func putObject(svc *s3.S3, bucket, key string, urls []string) error {
 	b := new(bytes.Buffer)
 	if err := json.NewEncoder(b).Encode(urls); err != nil {
 		return fmt.Errorf("encode json: %v", err)

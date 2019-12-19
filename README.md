@@ -8,5 +8,6 @@ $ env \
   BOOTH_URL=https://HOGE.booth.pm/ \
   SLACK_URL=https://hooks.slack.com/services/HOGE/FUGA/BAR \
   SLACK_CHANNEL=HOGE \
+  ALERT_EMAIL=fuga@example.com \
   make deploy
 ```
