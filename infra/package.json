@@ -8,7 +8,8 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "lint": "eslint . --ext .ts,.json",
+    "lint": "eslint . --ext .ts,.json && prettier --check **/*ts *js *json",
+    "format": "prettier --write **/*ts *js *json",
     "cdk": "cdk",
     "post-deploy": "node ./bin/post_deploy.js"
   },
@@ -22,6 +23,7 @@
     "eslint": "^6.7.2",
     "eslint-config-prettier": "^6.7.0",
     "jest": "^24.9.0",
+    "prettier": "1.19.1",
     "ts-jest": "^24.1.0",
     "ts-node": "^8.1.0",
     "typescript": "~3.7.2"
