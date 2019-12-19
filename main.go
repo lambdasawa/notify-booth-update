@@ -38,7 +38,13 @@ func main() {
 	lambda.Start(run)
 }
 
-func run() error {
+func run() (err error) {
+	defer func() {
+		if err != nil {
+			log.Error(err)
+		}
+	}()
+
 	sess := session.New()
 	region := aws.NewConfig().WithRegion("ap-northeast-1")
 
