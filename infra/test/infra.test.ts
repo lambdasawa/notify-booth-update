@@ -1,8 +1,4 @@
-import {
-  expect as expectCDK,
-  matchTemplate,
-  MatchStyle
-} from '@aws-cdk/assert';
+import { expect as expectCDK, matchTemplate, MatchStyle } from '@aws-cdk/assert';
 import cdk = require('@aws-cdk/core');
 import Infra = require('../lib/infra-stack');
 
@@ -14,9 +10,9 @@ test('Empty Stack', () => {
   expectCDK(stack).to(
     matchTemplate(
       {
-        Resources: {}
+        Resources: {},
       },
-      MatchStyle.EXACT
-    )
+      MatchStyle.EXACT,
+    ),
   );
 });

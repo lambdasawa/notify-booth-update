@@ -19,14 +19,14 @@ export class InfraStack extends cdk.Stack {
     const account = new iam.AccountPrincipal(this.account);
 
     const key = new kms.Key(this, 'Key', {
-      enableKeyRotation: true
+      enableKeyRotation: true,
     });
     const keyAlias = key.addAlias('alias/notify-booth-update');
 
     keyAlias.grantEncryptDecrypt(account);
 
     const bucket = new s3.Bucket(this, 'Bucket', {
-      removalPolicy: cdk.RemovalPolicy.DESTROY
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const func = new lambda.Function(this, 'Function', {
@@ -38,13 +38,13 @@ export class InfraStack extends cdk.Stack {
         S3_KEY: process.env['S3_KEY'] || '',
         BOOTH_URL: process.env['BOOTH_URL'] || '',
         ENCRYPTED_SLACK_URL: '',
-        ENCRYPTED_SLACK_CHANNEL: ''
+        ENCRYPTED_SLACK_CHANNEL: '',
       },
-      logRetention: logs.RetentionDays.ONE_WEEK
+      logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
     const logGroup = new logs.LogGroup(this, 'LogGroup', {
-      logGroupName: `/aws/lambda/${func.functionName}`
+      logGroupName: `/aws/lambda/${func.functionName}`,
     });
 
     keyAlias.grantEncryptDecrypt(func);
@@ -56,30 +56,26 @@ export class InfraStack extends cdk.Stack {
     this.addLogGroupAlarm(logGroup, 'notify-booth-update', 'error-log');
 
     new cdk.CfnOutput(this, 'FunctionName', {
-      value: func.functionName
+      value: func.functionName,
     });
     new cdk.CfnOutput(this, 'KeyId', {
-      value: keyAlias.keyId
+      value: keyAlias.keyId,
     });
   }
 
   private addSchedule(func: lambda.Function, expression: string): void {
     const rule = new events.Rule(this, 'Rule', {
-      schedule: events.Schedule.expression(expression)
+      schedule: events.Schedule.expression(expression),
     });
 
     rule.addTarget(new eventsTargets.LambdaFunction(func));
   }
 
-  private addLogGroupAlarm(
-    logGroup: logs.LogGroup,
-    metricNamespace: string,
-    metricName: string
-  ): void {
+  private addLogGroupAlarm(logGroup: logs.LogGroup, metricNamespace: string, metricName: string): void {
     logGroup.addMetricFilter('MetricFilter', {
       metricNamespace: metricNamespace,
       metricName: metricName,
-      filterPattern: logs.FilterPattern.literal(`{ $.level = "error" }`)
+      filterPattern: logs.FilterPattern.literal(`{ $.level = "error" }`),
     });
 
     const topic = new Topic(this, 'Topic', {});
@@ -87,17 +83,17 @@ export class InfraStack extends cdk.Stack {
     new Subscription(this, 'Subscription', {
       protocol: SubscriptionProtocol.EMAIL,
       endpoint: process.env['ALERT_EMAIL'] || '',
-      topic: topic
+      topic: topic,
     });
 
     const alarm = new Alarm(this, 'Alarm', {
       metric: new Metric({
         metricName: metricName,
-        namespace: metricNamespace
+        namespace: metricNamespace,
       }),
       evaluationPeriods: 1,
       threshold: 1,
-      treatMissingData: TreatMissingData.NOT_BREACHING
+      treatMissingData: TreatMissingData.NOT_BREACHING,
     });
     alarm.addAlarmAction(new SnsAction(topic));
   }

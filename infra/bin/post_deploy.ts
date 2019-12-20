@@ -3,13 +3,10 @@
 import 'source-map-support/register';
 import aws = require('aws-sdk');
 
-const findCfnOutputValue = async (
-  cloudFormation: aws.CloudFormation,
-  key: string
-): Promise<string> => {
+const findCfnOutputValue = async (cloudFormation: aws.CloudFormation, key: string): Promise<string> => {
   const stacksRes = await cloudFormation
     .describeStacks({
-      StackName: 'NotifyBoothUpdateInfraStack'
+      StackName: 'NotifyBoothUpdateInfraStack',
     })
     .promise();
   const stacks = stacksRes.Stacks || [];
@@ -18,15 +15,11 @@ const findCfnOutputValue = async (
   return output?.OutputValue || '';
 };
 
-const encryptKMS = async (
-  kms: aws.KMS,
-  keyId: string,
-  plaintext: string
-): Promise<string> => {
+const encryptKMS = async (kms: aws.KMS, keyId: string, plaintext: string): Promise<string> => {
   const encryptRes = await kms
     .encrypt({
       KeyId: keyId,
-      Plaintext: plaintext
+      Plaintext: plaintext,
     })
     .promise();
   const cipherTextBlob = encryptRes.CiphertextBlob;
@@ -51,21 +44,13 @@ const main = async (): Promise<void> => {
   const functionName = await findCfnOutputValue(cloudFormation, 'FunctionName');
 
   const kms = new aws.KMS();
-  const slackUrlCipherText = await encryptKMS(
-    kms,
-    keyId,
-    process.env['SLACK_URL'] || ''
-  );
-  const slackChannelCipherText = await encryptKMS(
-    kms,
-    keyId,
-    process.env['SLACK_CHANNEL'] || ''
-  );
+  const slackUrlCipherText = await encryptKMS(kms, keyId, process.env['SLACK_URL'] || '');
+  const slackChannelCipherText = await encryptKMS(kms, keyId, process.env['SLACK_CHANNEL'] || '');
 
   const lambda = new aws.Lambda();
   const fn = await lambda
     .getFunction({
-      FunctionName: functionName
+      FunctionName: functionName,
     })
     .promise();
   const envVars = fn.Configuration?.Environment?.Variables || {};
@@ -77,8 +62,8 @@ const main = async (): Promise<void> => {
     .updateFunctionConfiguration({
       FunctionName: functionName,
       Environment: {
-        Variables: envVars
-      }
+        Variables: envVars,
+      },
     })
     .promise();
 };
