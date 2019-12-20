@@ -11,7 +11,7 @@
     "lint": "eslint . --ext .ts,.json && prettier --check **/*ts *js *json",
     "format": "prettier --write **/*ts *js *json",
     "cdk": "cdk",
-    "post-deploy": "node ./bin/post_deploy.js"
+    "post-deploy": "node ./bin/post-deploy.js"
   },
   "devDependencies": {
     "@aws-cdk/assert": "1.18.0",
