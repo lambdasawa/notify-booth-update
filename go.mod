@@ -19,6 +19,6 @@ require (
 	github.com/saintfish/chardet v0.0.0-20120816061221-3af4cd4741ca // indirect
 	github.com/sirupsen/logrus v1.4.2
 	github.com/temoto/robotstxt v1.1.1 // indirect
-	golang.org/x/net v0.0.0-20191207000613-e7e4b65ae663 // indirect
+	golang.org/x/net v0.0.0-20191207000613-e7e4b65ae663
 	google.golang.org/appengine v1.6.5 // indirect
 )

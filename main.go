@@ -21,6 +21,7 @@ import (
 	"github.com/gocolly/colly"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/context/ctxhttp"
 )
 
 type (
@@ -244,8 +245,7 @@ func postSlack(
 		return fmt.Errorf("get KMS data: %v", err)
 	}
 
-	xray.Client(http.DefaultClient)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(reqBytes)) // #nosec
+	resp, err := ctxhttp.Post(ctx, xray.Client(nil), url, "application/json", bytes.NewBuffer(reqBytes)) // #nosec
 	if err != nil {
 		return fmt.Errorf("post: %v", err)
 	}
