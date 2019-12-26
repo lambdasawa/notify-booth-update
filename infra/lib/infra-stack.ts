@@ -9,6 +9,7 @@ import logs = require('@aws-cdk/aws-logs');
 import { SnsAction } from '@aws-cdk/aws-cloudwatch-actions';
 import { SubscriptionProtocol, Topic, Subscription } from '@aws-cdk/aws-sns';
 import { TreatMissingData, Alarm, Metric } from '@aws-cdk/aws-cloudwatch';
+import { Tracing } from '@aws-cdk/aws-lambda';
 
 export class InfraStack extends cdk.Stack {
   private schedule = '3 minutes';
@@ -41,6 +42,7 @@ export class InfraStack extends cdk.Stack {
         ENCRYPTED_SLACK_CHANNEL: '',
       },
       logRetention: logs.RetentionDays.ONE_WEEK,
+      tracing: Tracing.ACTIVE,
     });
 
     const logGroup = new logs.LogGroup(this, 'LogGroup', {
