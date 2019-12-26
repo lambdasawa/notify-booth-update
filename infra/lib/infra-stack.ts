@@ -1,50 +1,52 @@
-import cdk = require("@aws-cdk/core");
-import iam = require("@aws-cdk/aws-iam");
-import kms = require("@aws-cdk/aws-kms");
-import s3 = require("@aws-cdk/aws-s3");
-import lambda = require("@aws-cdk/aws-lambda");
-import events = require("@aws-cdk/aws-events");
-import eventsTargets = require("@aws-cdk/aws-events-targets");
-import logs = require("@aws-cdk/aws-logs");
-import { SnsAction } from "@aws-cdk/aws-cloudwatch-actions";
-import { SubscriptionProtocol, Topic, Subscription } from "@aws-cdk/aws-sns";
-import { TreatMissingData, Alarm, Metric } from "@aws-cdk/aws-cloudwatch";
+import cdk = require('@aws-cdk/core');
+import iam = require('@aws-cdk/aws-iam');
+import kms = require('@aws-cdk/aws-kms');
+import s3 = require('@aws-cdk/aws-s3');
+import lambda = require('@aws-cdk/aws-lambda');
+import events = require('@aws-cdk/aws-events');
+import eventsTargets = require('@aws-cdk/aws-events-targets');
+import logs = require('@aws-cdk/aws-logs');
+import { SnsAction } from '@aws-cdk/aws-cloudwatch-actions';
+import { SubscriptionProtocol, Topic, Subscription } from '@aws-cdk/aws-sns';
+import { TreatMissingData, Alarm, Metric } from '@aws-cdk/aws-cloudwatch';
+import { Tracing } from '@aws-cdk/aws-lambda';
 
 export class InfraStack extends cdk.Stack {
-  private schedule = "3 minutes";
+  private schedule = '3 minutes';
 
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     const account = new iam.AccountPrincipal(this.account);
 
-    const key = new kms.Key(this, "Key", {
-      enableKeyRotation: true
+    const key = new kms.Key(this, 'Key', {
+      enableKeyRotation: true,
     });
-    const keyAlias = key.addAlias("alias/notify-booth-update");
+    const keyAlias = key.addAlias('alias/notify-booth-update');
 
     keyAlias.grantEncryptDecrypt(account);
 
-    const bucket = new s3.Bucket(this, "Bucket", {
-      removalPolicy: cdk.RemovalPolicy.DESTROY
+    const bucket = new s3.Bucket(this, 'Bucket', {
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    const func = new lambda.Function(this, "Function", {
-      code: lambda.Code.fromAsset("./lambda"),
-      handler: "main",
+    const func = new lambda.Function(this, 'Function', {
+      code: lambda.Code.fromAsset('./lambda'),
+      handler: 'main',
       runtime: lambda.Runtime.GO_1_X,
       environment: {
         S3_BUCKET: bucket.bucketName,
-        S3_KEY: process.env["S3_KEY"] || "",
-        BOOTH_URL: process.env["BOOTH_URL"] || "",
-        ENCRYPTED_SLACK_URL: "",
-        ENCRYPTED_SLACK_CHANNEL: ""
+        S3_KEY: process.env['S3_KEY'] || '',
+        BOOTH_URL: process.env['BOOTH_URL'] || '',
+        ENCRYPTED_SLACK_URL: '',
+        ENCRYPTED_SLACK_CHANNEL: '',
       },
-      logRetention: logs.RetentionDays.ONE_WEEK
+      logRetention: logs.RetentionDays.ONE_WEEK,
+      tracing: Tracing.ACTIVE,
     });
 
-    const logGroup = new logs.LogGroup(this, "LogGroup", {
-      logGroupName: `/aws/lambda/${func.functionName}`
+    const logGroup = new logs.LogGroup(this, 'LogGroup', {
+      logGroupName: `/aws/lambda/${func.functionName}`,
     });
 
     keyAlias.grantEncryptDecrypt(func);
@@ -53,51 +55,47 @@ export class InfraStack extends cdk.Stack {
 
     this.addSchedule(func, `rate(${this.schedule})`);
 
-    this.addLogGroupAlarm(logGroup, "notify-booth-update", "error-log");
+    this.addLogGroupAlarm(logGroup, 'notify-booth-update', 'error-log');
 
-    new cdk.CfnOutput(this, "FunctionName", {
-      value: func.functionName
+    new cdk.CfnOutput(this, 'FunctionName', {
+      value: func.functionName,
     });
-    new cdk.CfnOutput(this, "KeyId", {
-      value: keyAlias.keyId
+    new cdk.CfnOutput(this, 'KeyId', {
+      value: keyAlias.keyId,
     });
   }
 
-  private addSchedule(func: lambda.Function, expression: string) {
-    const rule = new events.Rule(this, "Rule", {
-      schedule: events.Schedule.expression(expression)
+  private addSchedule(func: lambda.Function, expression: string): void {
+    const rule = new events.Rule(this, 'Rule', {
+      schedule: events.Schedule.expression(expression),
     });
 
     rule.addTarget(new eventsTargets.LambdaFunction(func));
   }
 
-  private addLogGroupAlarm(
-    logGroup: logs.LogGroup,
-    metricNamespace: string,
-    metricName: string
-  ) {
-    logGroup.addMetricFilter("MetricFilter", {
+  private addLogGroupAlarm(logGroup: logs.LogGroup, metricNamespace: string, metricName: string): void {
+    logGroup.addMetricFilter('MetricFilter', {
       metricNamespace: metricNamespace,
       metricName: metricName,
-      filterPattern: logs.FilterPattern.literal(`{ $.level = "error" }`)
+      filterPattern: logs.FilterPattern.literal(`{ $.level = "error" }`),
     });
 
-    const topic = new Topic(this, "Topic", {});
+    const topic = new Topic(this, 'Topic', {});
 
-    const subscription = new Subscription(this, "Subscription", {
+    new Subscription(this, 'Subscription', {
       protocol: SubscriptionProtocol.EMAIL,
-      endpoint: process.env["ALERT_EMAIL"] || "",
-      topic: topic
+      endpoint: process.env['ALERT_EMAIL'] || '',
+      topic: topic,
     });
 
-    const alarm = new Alarm(this, "Alarm", {
+    const alarm = new Alarm(this, 'Alarm', {
       metric: new Metric({
         metricName: metricName,
-        namespace: metricNamespace
+        namespace: metricNamespace,
       }),
       evaluationPeriods: 1,
       threshold: 1,
-      treatMissingData: TreatMissingData.NOT_BREACHING
+      treatMissingData: TreatMissingData.NOT_BREACHING,
     });
     alarm.addAlarmAction(new SnsAction(topic));
   }
