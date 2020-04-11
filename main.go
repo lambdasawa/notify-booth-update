@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -15,22 +14,20 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/kms"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/gocolly/colly"
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context/ctxhttp"
 )
 
 type (
 	envVars struct {
-		bucket                string
-		key                   string
-		boothURL              string
-		encryptedSlackURL     string
-		encryptedSlackChannel string
+		bucket       string
+		key          string
+		boothURL     string
+		slackURL     string
+		slackChannel string
 	}
 )
 
@@ -61,10 +58,8 @@ func Run(ctx context.Context) (err error) {
 	}
 	region := aws.NewConfig().WithRegion("ap-northeast-1")
 
-	kmsService := kms.New(sess, region)
 	s3Service := s3.New(sess, region)
 
-	xray.AWS(kmsService.Client)
 	xray.AWS(s3Service.Client)
 
 	envVars := getEnvVars()
@@ -85,9 +80,8 @@ func Run(ctx context.Context) (err error) {
 	if len(newURLs) > 0 {
 		if err := postSlack(
 			ctx,
-			kmsService,
-			envVars.encryptedSlackURL,
-			envVars.encryptedSlackChannel,
+			envVars.slackURL,
+			envVars.slackChannel,
 			envVars.boothURL,
 			newURLs,
 		); err != nil {
@@ -109,11 +103,11 @@ func Run(ctx context.Context) (err error) {
 
 func getEnvVars() envVars {
 	return envVars{
-		bucket:                os.Getenv("S3_BUCKET"),
-		key:                   os.Getenv("S3_KEY"),
-		boothURL:              os.Getenv("BOOTH_URL"),
-		encryptedSlackURL:     os.Getenv("ENCRYPTED_SLACK_URL"),
-		encryptedSlackChannel: os.Getenv("ENCRYPTED_SLACK_CHANNEL"),
+		bucket:       os.Getenv("S3_BUCKET"),
+		key:          os.Getenv("S3_KEY"),
+		boothURL:     os.Getenv("BOOTH_URL"),
+		slackURL:     os.Getenv("SLACK_URL"),
+		slackChannel: os.Getenv("SLACK_CHANNEL"),
 	}
 }
 
@@ -211,16 +205,11 @@ func getNewUrls(known, current []string) []string {
 
 func postSlack(
 	ctx context.Context,
-	svc *kms.KMS,
-	encryptedSlackURL string,
-	encryptedSlackChannel string,
+	slackURL string,
+	slackChannel string,
 	boothURL string,
 	newURLs []string,
 ) error {
-	channel, err := getKMSData(ctx, svc, encryptedSlackChannel)
-	if err != nil {
-		return fmt.Errorf("get KMS data: %v", err)
-	}
 
 	sb := new(strings.Builder)
 	fmt.Fprintln(sb, "# Booth updated!!!")
@@ -233,19 +222,14 @@ func postSlack(
 
 	req := map[string]interface{}{
 		"text":        sb.String(),
-		"channelName": channel,
+		"channelName": slackChannel,
 	}
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("encode request: %v", err)
 	}
 
-	url, err := getKMSData(ctx, svc, encryptedSlackURL)
-	if err != nil {
-		return fmt.Errorf("get KMS data: %v", err)
-	}
-
-	resp, err := ctxhttp.Post(ctx, xray.Client(nil), url, "application/json", bytes.NewBuffer(reqBytes)) // #nosec
+	resp, err := ctxhttp.Post(ctx, xray.Client(nil), slackURL, "application/json", bytes.NewBuffer(reqBytes)) // #nosec
 	if err != nil {
 		return fmt.Errorf("post: %v", err)
 	}
@@ -260,23 +244,6 @@ func postSlack(
 	}
 
 	return nil
-}
-
-func getKMSData(ctx context.Context, svc *kms.KMS, name string) (string, error) {
-	dataBytes, err := base64.StdEncoding.DecodeString(name)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to decode KMS data as Base64")
-	}
-
-	var in = &kms.DecryptInput{
-		CiphertextBlob: dataBytes,
-	}
-	out, err := svc.DecryptWithContext(ctx, in)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to decrypt KMS value")
-	}
-
-	return string(out.Plaintext), nil
 }
 
 func putObject(ctx context.Context, svc *s3.S3, bucket, key string, urls []string) error {
