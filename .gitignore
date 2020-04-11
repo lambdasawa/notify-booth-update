@@ -1,1 +1,3 @@
-infra/lambda/main
+.env
+bin/
+.serverless/
