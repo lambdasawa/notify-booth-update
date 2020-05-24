@@ -1,3 +1,5 @@
 .env
 bin/
 .serverless/
+
+data.json
